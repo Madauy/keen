@@ -9,6 +9,7 @@ pip install -r requirements.txt
 ```
 
 **Dependencias principales:**
+
 - `transformers>=4.30.0`
 - `torch>=2.0.0`
 - `pandas>=2.0.0`
@@ -70,11 +71,12 @@ python main.py --data ./questions.csv --normalize-only
 
 El archivo CSV debe contener las siguientes columnas:
 
-```
+```plaintext
 entidad,relacion,objetos,pregunta,respuestas,obtenido_de,respuestas_aliases
 ```
 
 Ejemplo:
+
 ```csv
 Balón de Oro,deporte,['futbol'],¿A qué deporte pertenece?,['futbol'],['argentina'],"[['futbol', 'balompie']]"
 ```
@@ -89,7 +91,7 @@ Balón de Oro,deporte,['futbol'],¿A qué deporte pertenece?,['futbol'],['argent
 
 ## Arquitectura
 
-```
+```plaintext
 proyecto/
 ├── main.py              # CLI principal
 ├── extractor.py         # FalconHiddenStatesExtractor (métodos KEEN)

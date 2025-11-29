@@ -33,8 +33,9 @@ LANGUAGE_CONFIGS = {
 STATE_DIR = "states"
 
 # Tamaño del buffer para guardar vectores (cada N filas)
-BUFFER_SIZE = 10
-
+# Note: Use smaller values for vp method (large 131K vectors) vs hs method (small 3K vectors)
+# Recommended: hs=1000, vp=50, vp-k=500
+BUFFER_SIZE = 50
 
 def get_language_config(language: str) -> dict:
   """Obtiene la configuración para un idioma específico.
