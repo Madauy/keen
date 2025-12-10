@@ -4,62 +4,102 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a KEEN (Knowledge Estimation in Neural Networks) implementation for extracting internal representations from Falcon3-3B-Instruct to measure LLM knowledge about entities without generating tokens. The project compares knowledge about Latin American vs. US entities.
+KEEN (Knowledge Estimation in Neural Networks) implementation for measuring LLM knowledge about entities without generating tokens. This project evaluates whether language models have more knowledge about US entities versus Latin American entities through three stages: validation, extraction, and probe training.
+
+## Repository Structure
+
+The project is organized as three independent modules, each with its own `requirements.txt`:
+
+```plaintext
+keen/
+├── extractor/    # Hidden states extraction from Falcon3-3B-Instruct
+├── probe/        # MLP probe training on extracted representations
+└── validation/   # LLM Q&A evaluation with semantic similarity
+```
 
 ## Commands
 
+### Extractor (Hidden States Extraction)
+
 ```bash
-# Install dependencies
+cd extractor
 pip install -r requirements.txt
 
-# Run extraction CLI
-python main.py --data ./questions.csv --method hs
-python main.py --data ./questions.csv --method vp-k --k 50 --country chile,usa
-python main.py --data ./questions.csv --limit 100  # Process first 100 pending
+# Extract hidden states using different methods
+python main.py --data ./questions.csv --method hs              # Hidden States (3072-D)
+python main.py --data ./questions.csv --method vp-k --k 50     # Top-k Vocab Projection
+python main.py --data ./questions.csv --country chile,usa --limit 100
 
 # Resume interrupted extraction (same command continues from saved state)
 python main.py --data ./questions.csv --method hs
 
-# Normalize after complete extraction
+# Apply normalization after complete extraction
 python main.py --data ./questions.csv --normalize-only
+```
 
-# Lint with ruff
+### Probe (MLP Training)
+
+```bash
+cd probe
+
+# Generate DataFrame from hidden states + scores
+python utils.py paper  # or: en, es
+
+# Train probe
+python main.py --prompt paper --learning_rate 0.01 --max_iter 100 --batch_size 32
+python main.py --prompt paper --country chile  # Filter by country
+python main.py --prompt paper --region latam   # Filter by region (latam/usa)
+```
+
+### Validation (LLM Evaluation)
+
+```bash
+cd validation
+pip install -r requirements.txt
+
+python main.py --data ./questions.csv
+python main.py --data ./questions.csv --model "Qwen/Qwen3-4B-Instruct" --language en
+python main.py --data ./questions.csv --limit 100 --country chile,usa
+```
+
+### Linting (all modules)
+
+```bash
 ruff check .
 ruff format .
 ```
 
 ## Architecture
 
-### Core Components
+### Pipeline Flow
 
-- **`extractor.py`**: `FalconHiddenStatesExtractor` class implementing three KEEN methods:
-  - `method_hs()`: Hidden States (3072-D vectors)
-  - `method_vp()`: Vocabulary Projection (131K-D vectors)
-  - `method_vp_k()`: Top-k Vocabulary Projection (3k-D vectors, interpretable)
+1. **Validation**: Evaluate LLM on Q&A tasks to compute accuracy scores per entity
+2. **Extraction**: Extract hidden states from entity tokens (layers 15-17 of Falcon3-3B)
+3. **Probe**: Train MLP regressor to predict accuracy from hidden states (Pearson correlation)
 
-- **`state_manager.py`**: `ExtractionStateManager` for resumable extraction with JSON state + NPZ vector storage
+### Extraction Methods (extractor/extractor.py)
 
-- **`main.py`**: CLI entry point with argparse
+- `hs`: Hidden States - 3072-D vectors from layers 15-17
+- `vp`: Vocabulary Projection - 131K-D full vocabulary projection
+- `vp-k`: Top-k Vocabulary Projection - 3k-D interpretable vectors
 
-- **`config.py`**: Centralized configuration (model, CSV columns, prompt templates ES/EN)
+### State Management
 
-### Data Flow
+All modules support resumable execution via state files:
 
-1. CSV with entities → `main.py` validates structure
-2. For each entity: prompt "Dime todo lo que sabes de {entidad}" → forward pass (no generation)
-3. Extract hidden states from entity token position at layers 15-17 (3/4 of model depth)
-4. Buffer 10 rows → flush to NPZ file
-5. When complete: apply global MinMax normalization across all vectors
+- Extractor: `states/state_{hash}_{method}.json` + `.npz`
+- Validation: `states/state_{hash}.json`
 
-### State Files
+### CSV Input Format
 
-State files are stored in `states/` directory:
+```plaintext
+entidad,relacion,objetos,pregunta,respuestas,obtenido_de,respuestas_aliases
+```
 
-- `state_{hash}_{method}.json`: Metadata and row tracking
-- `state_{hash}_{method}.npz`: Raw and normalized vectors
+The `obtenido_de` field contains country codes used for filtering.
 
 ## Code Style
 
 - 2-space indentation (configured in ruff.toml)
-- Line length: 100 characters
-- Ruff linting: E, F, I rules enabled
+- 100-character line length
+- Ruff rules: E, F, I (pycodestyle, pyflakes, isort)

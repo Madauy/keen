@@ -1,129 +1,92 @@
-# Extracción de Hidden States KEEN
+# KEEN - Knowledge Estimation in Neural Networks
 
-Sistema para extraer representaciones internas de Falcon3-3B-Instruct usando la metodología KEEN (Knowledge Estimation in Neural Networks), permitiendo medir el conocimiento del modelo sobre entidades sin generar tokens.
+Implementación de KEEN para medir el conocimiento de LLMs sobre entidades sin generar tokens. Este proyecto evalúa si los modelos de lenguaje tienen más conocimiento sobre entidades de Estados Unidos versus entidades de Latinoamérica.
 
-## Instalación
+## Descripción
+
+KEEN (Knowledge Estimation in Neural Networks) es una metodología que permite estimar cuánto "sabe" un modelo de lenguaje sobre una entidad específica analizando sus representaciones internas, sin necesidad de generar texto.
+
+**Hipótesis de investigación**: Los LLMs tienen un sesgo de conocimiento hacia entidades estadounidenses en comparación con entidades latinoamericanas.
+
+**Modelo base**: Falcon3-3B-Instruct
+
+## Pipeline
+
+El proyecto consta de tres etapas secuenciales:
+
+```plaintext
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│  VALIDATION │  →   │  EXTRACTOR  │  →   │    PROBE    │
+│             │      │             │      │             │
+│  Q&A eval   │      │   Hidden    │      │    MLP      │
+│  → scores   │      │   States    │      │  training   │
+└─────────────┘      └─────────────┘      └─────────────┘
+     CSV              score.json              Pearson
+   entrada           + vectores           correlation
+```
+
+1. **Validation**: Evalúa el LLM en tareas de Q&A para obtener accuracy por entidad
+2. **Extractor**: Extrae hidden states del token de la entidad (capas 15-17)
+3. **Probe**: Entrena un regresor MLP para predecir accuracy desde los hidden states
+
+## Módulos
+
+### Validation
+
+Evalúa modelos de lenguaje en preguntas y respuestas usando similitud semántica. Genera scores de accuracy por entidad.
+
+[Ver documentación completa](./validation/README.md)
+
+### Extractor
+
+Extrae representaciones internas de Falcon3-3B-Instruct usando la metodología KEEN. Soporta tres métodos: Hidden States, Vocabulary Projection y Top-k VP.
+
+[Ver documentación completa](./extractor/README.md)
+
+### Probe
+
+Entrena una sonda MLP para predecir scores de accuracy a partir de los hidden states extraídos. Usa correlación de Pearson como métrica.
+
+[Ver documentación completa](./probe/README.md)
+
+## Quick Start
 
 ```bash
+# 1. Validation - Evaluar Q&A
+cd validation
 pip install -r requirements.txt
+python main.py --data ./QA_final.csv
+
+# 2. Extractor - Extraer hidden states
+cd ../extractor
+pip install -r requirements.txt
+python main.py --data ./QA_final.csv --method hs
+
+# 3. Probe - Entrenar sonda
+cd ../probe
+pip install -r requirements.txt
+python utils.py paper
+python main.py --prompt paper --learning_rate 0.01 --max_iter 100 --batch_size 32
 ```
 
-**Dependencias principales:**
+## Formato de Datos
 
-- `transformers>=4.30.0`
-- `torch>=2.0.0`
-- `pandas>=2.0.0`
-- `scikit-learn`
-
-## Uso
-
-### Extracción básica
-
-```bash
-# Procesar todas las entidades con Hidden States
-python main.py --data ./questions.csv --method hs
-
-# Usar Vocabulary Projection Top-k
-python main.py --data ./questions.csv --method vp-k --k 50
-
-# Procesar en lotes de 100
-python main.py --data ./questions.csv --limit 100
-```
-
-### Filtros
-
-```bash
-# Filtrar por país (campo obtenido_de)
-python main.py --data ./questions.csv --country chile,usa
-
-# Cambiar idioma del prompt
-python main.py --data ./questions.csv --language en
-```
-
-### Resumir ejecución interrumpida
-
-```bash
-# Simplemente ejecutar el mismo comando - detecta progreso automáticamente
-python main.py --data ./questions.csv --method hs
-```
-
-### Normalización
-
-```bash
-# Normalizar después de extracción completa
-python main.py --data ./questions.csv --normalize-only
-```
-
-## Argumentos CLI
-
-| Argumento | Descripción | Default |
-|-----------|-------------|---------|
-| `--data` | Ruta al CSV con entidades (requerido) | - |
-| `--method` | Método: `hs`, `vp`, `vp-k` | `hs` |
-| `--k` | Valor k para VP-k | `50` |
-| `--vpk-mode` | Modo VP-k: `positive`, `bidirectional`, `abs` | `bidirectional` |
-| `--language` | Idioma del prompt: `es`, `en` | `es` |
-| `--limit` | Máximo de filas por ejecución | Todas |
-| `--country` | Filtro por países (separados por coma) | Todos |
-| `--normalize-only` | Solo aplicar normalización global | - |
-
-## Formato del CSV
-
-El archivo CSV debe contener las siguientes columnas:
+El CSV de entrada debe contener las siguientes columnas:
 
 ```plaintext
 entidad,relacion,objetos,pregunta,respuestas,obtenido_de,respuestas_aliases
 ```
 
-Ejemplo:
+El campo `obtenido_de` contiene códigos de país usados para filtrar (ej: `chile`, `usa`, `argentina`).
 
-```csv
-Balón de Oro,deporte,['futbol'],¿A qué deporte pertenece?,['futbol'],['argentina'],"[['futbol', 'balompie']]"
-```
-
-## Métodos de Extracción
-
-| Método | Dimensión | Descripción |
-|--------|-----------|-------------|
-| `hs` | 3,072 | Hidden States directos de capas 15-17 |
-| `vp` | 131,072 | Proyección al vocabulario completo |
-| `vp-k` | 3×k | Top-k tokens más relevantes (interpretable) |
-
-## Arquitectura
-
-```plaintext
-proyecto/
-├── main.py              # CLI principal
-├── extractor.py         # FalconHiddenStatesExtractor (métodos KEEN)
-├── state_manager.py     # Gestión de estado resumible
-├── config.py            # Configuración centralizada
-└── states/              # Archivos de estado (JSON + NPZ)
-```
-
-### Flujo de datos
-
-1. **Entrada**: CSV con entidades
-2. **Prompt**: "Dime todo lo que sabes de {entidad}" (forward pass sin generación)
-3. **Extracción**: Hidden states del token de la entidad en capas 15-17
-4. **Buffer**: Guarda cada 10 filas al NPZ
-5. **Normalización**: MinMax global al completar todas las entidades
-
-### Archivos de estado
-
-- `states/state_{hash}_{method}.json`: Metadatos y tracking de filas
-- `states/state_{hash}_{method}.npz`: Vectores raw y normalizados
-
-## Metodología KEEN
-
-Este proyecto implementa la metodología descrita en:
-
-> Gottesman & Geva (2024). "Estimating knowledge in large language models without generating a single token." EMNLP 2024.
-
-**Principio**: Las representaciones internas del modelo en el token de una entidad contienen información sobre cuánto "sabe" el modelo de esa entidad, sin necesidad de generar texto.
-
-## Lint
+## Desarrollo
 
 ```bash
+# Lint (en cualquier módulo)
 ruff check .
 ruff format .
 ```
+
+## Referencias
+
+> Gottesman & Geva (2024). "Estimating knowledge in large language models without generating a single token." EMNLP 2024.

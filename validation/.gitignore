@@ -1,0 +1,5 @@
+*.csv
+*.json
+*.tmp
+.ruff_cache
+__pycache__

@@ -25,7 +25,7 @@ LANGUAGE_CONFIGS = {
     "prompt_template": "Dime todo lo que sabes de {entidad}",
   },
   "en": {
-    "prompt_template": "Tell me everything you know about {entidad}",
+    "prompt_template": "This document describes {entidad}",
   },
 }
 
@@ -35,7 +35,8 @@ STATE_DIR = "states"
 # Tamaño del buffer para guardar vectores (cada N filas)
 # Note: Use smaller values for vp method (large 131K vectors) vs hs method (small 3K vectors)
 # Recommended: hs=1000, vp=50, vp-k=500
-BUFFER_SIZE = 50
+BUFFER_SIZE = 1000
+
 
 def get_language_config(language: str) -> dict:
   """Obtiene la configuración para un idioma específico.

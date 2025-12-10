@@ -9,7 +9,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from config import REQUIRED_COLUMNS, STATE_DIR, BUFFER_SIZE
+from config import BUFFER_SIZE, REQUIRED_COLUMNS, STATE_DIR
 
 
 class ExtractionStateManager:
